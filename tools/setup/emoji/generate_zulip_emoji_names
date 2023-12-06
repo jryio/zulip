@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import json
+import orjson
+import copy
+
+SEP = ","
+
+# This should be adding the `tools` thing to the path so we don't get a runtime
+# error
+TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ZULIP_PATH = os.path.dirname(TOOLS_DIR)
+sys.path.append(ZULIP_PATH)
+
+from tools.setup.emoji.emoji_setup_utils import get_emoji_code
+from emoji_names import EMOJI_NAME_MAPS
+from typing import  Dict, List
+
+TOOLS_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+ZULIP_PATH = os.path.dirname(TOOLS_DIR)
+EMOJI_DATA_FILE = os.path.join(ZULIP_PATH, "node_modules", "emoji-datasource-google", "emoji.json")
+
+UNIFIED_REACTIONS_FILE = os.path.join(
+    ZULIP_PATH, "zerver", "management", "data", "unified_reactions.json"
+)
+
+with open(UNIFIED_REACTIONS_FILE, "rb") as fp:
+    UNIFIED_REACTIONS_MAP = orjson.loads(fp.read())
+
+with open(EMOJI_DATA_FILE, "rb") as fp:
+    EMOJI_DATA = orjson.loads(fp.read())
+
+
+emoji_code_to_iamcal_names: Dict[str, str] = {}
+emoji_code_to_gemoji_names: Dict[str, str] = {}
+zulip_name_to_emoji_code: Dict[str, str] = {}
+
+
+def generate_emoji_code_to_emoji_names_maps() -> None:
+    # Prepare gemoji names map.
+    reverse_unified_reactions_map: Dict[str, List[str]] = {}
+    for name in UNIFIED_REACTIONS_MAP:
+        emoji_code = UNIFIED_REACTIONS_MAP[name]
+        if emoji_code in reverse_unified_reactions_map:
+            reverse_unified_reactions_map[emoji_code].append(name)
+        else:
+            reverse_unified_reactions_map[emoji_code] = [name]
+
+    for emoji_code in reverse_unified_reactions_map:
+        emoji_code_to_gemoji_names[emoji_code] = SEP.join(
+            reverse_unified_reactions_map[emoji_code]
+        )
+
+    # Prepare iamcal names map.
+    for emoji_dict in EMOJI_DATA:
+        emoji_code = get_emoji_code(emoji_dict)
+        emoji_code_to_iamcal_names[emoji_code] = SEP.join(emoji_dict["short_names"])
+
+
+def generate_zulip_names():
+    # EMOJI_NAME_MAPS
+    # Keys are emoji codes
+    # Values are dicts { cannoncial_mame: str, aliases: list<str> }
+    #
+    # OUR DICTIONARY
+    # Keys are (cannoncial_mame + aliases)
+    # Values are gemoji aliases, then iamcal if no gemoji exist
+    for emoji_code in EMOJI_NAME_MAPS:
+        # Get zulip names for emoji codes
+        canonical_name = EMOJI_NAME_MAPS[emoji_code]["canonical_name"]
+        aliases = EMOJI_NAME_MAPS[emoji_code]["aliases"]
+        names = [canonical_name]
+        names.extend(aliases)
+
+        # Get Gemoji names for emoji codes, if Gemoji names are not provided
+        # for this emoji code, then use iamcal (slac) instead
+        actual_emoji_names = ""
+        if emoji_code in emoji_code_to_gemoji_names:
+            actual_emoji_names = emoji_code_to_gemoji_names[emoji_code]
+        if emoji_code in emoji_code_to_iamcal_names:
+            actual_emoji_names = emoji_code_to_iamcal_names[emoji_code]
+
+        actual_emoji_names = actual_emoji_names.replace("-", "_")
+        splits = actual_emoji_names.split(SEP)
+
+        # We want a mapping of Zuli Alias -> Gemoji Alias | Iamcal Alias
+        for name in names:
+            name = name.replace("-", "_")
+            splits = copy.copy(splits)
+            new_splits = []
+            for alias in splits:
+                with_colons = ":{}:".format(alias)
+                new_splits.append(with_colons)
+            actual_emoji_names = SEP.join(new_splits)
+            # Specifically for all flag emojis, we don't want to use either
+            # iamcal (slack) or gemoji (missing) becauze the Zulip aliases are
+            # probably correct.
+            # Instead we map Zulip Alias -> Zulip Alias
+            shortcode = ":{}:".format(name) if "flag" in name else actual_emoji_names
+            print("chosen shortcode =", shortcode)
+            zulip_name_to_emoji_code[name] = shortcode
+def main():
+    generate_emoji_code_to_emoji_names_maps()
+    generate_zulip_names()
+    with open("zulip.json", "w") as fp:
+        j = json.dumps(zulip_name_to_emoji_code, indent=2, ensure_ascii=False)
+        fp.write(j)
+        print("Done, wrote to zulip.json. Open it")
+
+
+if __name__ == "__main__":
+    main()

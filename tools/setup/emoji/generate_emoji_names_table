@@ -183,19 +183,20 @@ def generate_emoji_collection() -> None:
         category = emoji_dict["category"]
         emoji_code = get_emoji_code(emoji_dict)
         sort_order = emoji_dict["sort_order"]
-        emoji_collection[category].append(
-            {
-                "category": category,
-                "emoji_code": emoji_code,
-                "images_html": get_images_html(emoji_code),
-                "gemoji_names": emoji_code_to_gemoji_names.get(emoji_code, ""),
-                "iamcal_names": emoji_code_to_iamcal_names.get(emoji_code, ""),
-                "zulip_names": emoji_code_to_zulip_names.get(emoji_code, ""),
-                "unicode_name": (emoji_dict["name"] or "").lower(),
-                "sort_order": sort_order,
-                "sorting_info": get_sorting_info(category, sort_order),
-            }
-        )
+        if category != "Component":
+            emoji_collection[category].append(
+                {
+                    "category": category,
+                    "emoji_code": emoji_code,
+                    "images_html": get_images_html(emoji_code),
+                    "gemoji_names": emoji_code_to_gemoji_names.get(emoji_code, ""),
+                    "iamcal_names": emoji_code_to_iamcal_names.get(emoji_code, ""),
+                    "zulip_names": emoji_code_to_zulip_names.get(emoji_code, ""),
+                    "unicode_name": (emoji_dict["name"] or "").lower(),
+                    "sort_order": sort_order,
+                    "sorting_info": get_sorting_info(category, sort_order),
+                }
+            )
 
     # Sort `emoji_collection`.
     for category in SORTED_CATEGORIES:
